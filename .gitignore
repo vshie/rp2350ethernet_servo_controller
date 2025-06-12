@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# UF2 files
+*.uf2
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store 
