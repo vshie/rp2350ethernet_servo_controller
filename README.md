@@ -1,6 +1,5 @@
 # RP2350 Ethernet Servo Controller
-<img width="410" alt="image" src="https://github.com/user-attachments/assets/e1f43057-8154-4782-b9f7-2954efc5299f" />
-
+<img width="492" alt="image" src="https://github.com/user-attachments/assets/eab1f58b-cc58-4543-97be-1a91a20a02cc" />
 
 A web-based servo controller for the Raspberry Pi Pico (RP2040) with Ethernet connectivity using the CH9120 Ethernet module.
 
