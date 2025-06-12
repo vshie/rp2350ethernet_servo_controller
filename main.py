@@ -80,13 +80,13 @@ Connection: close
 <!DOCTYPE html>
 <html>
 <head><meta charset='UTF-8'>
-  <title>RadCam RP2040 Controller</title>
+  <title>RadCam RP2350-ETH Controller</title>
   <style>
     .slider-container { margin-bottom: 20px; }
   </style>
 </head>
 <body>
-  <h1>RadCam RP2040 Controller</h1>
+  <h1>RadCam RP2350-ETH Controller</h1>
   %s
 <script>
   function link(slider, number) {

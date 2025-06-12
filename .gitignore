@@ -5,6 +5,7 @@ __pycache__/
 
 # UF2 files
 *.uf2
+!rp2-pico-20230209-unstable-v1.19.1.uf2
 
 # IDE
 .vscode/

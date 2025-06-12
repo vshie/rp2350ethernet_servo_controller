@@ -54,10 +54,10 @@ The web interface provides sliders for each servo with the following features:
     - `value`: position in microseconds (1000-2000)
 
 ## Setup
-
-1. Flash the RP2040 with the provided firmware
-2. Connect the CH9120 module and servos according to the pin connections
-3. Power on the system
+Make sure to setup device with rp2-pico-20230209-unstable-v1.19.1.uf2
+1. Flash the RP2040 with the provided firmware: mpremote cp main.py :main.py and mpremote cp ch9120.py :ch9120.py
+2. Connect the servos according to the pin connections
+3. Power on the system - if debugging, run main.py with mpremote run main.py (otherwise main.py runs on boot)
 4. Access the web interface at http://192.168.2.42
 
 ## Dependencies
