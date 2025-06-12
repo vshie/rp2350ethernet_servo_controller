@@ -1,4 +1,4 @@
-# RP2040 Ethernet Servo Controller
+# RP2350 Ethernet Servo Controller
 <img width="410" alt="image" src="https://github.com/user-attachments/assets/e1f43057-8154-4782-b9f7-2954efc5299f" />
 
 
