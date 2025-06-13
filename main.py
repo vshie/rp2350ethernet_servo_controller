@@ -1,4 +1,3 @@
-
 from machine import UART, Pin, PWM
 import time
 import ujson as json
@@ -91,9 +90,11 @@ Connection: close
 <script>
   function link(slider, number) {
     slider.oninput = () => number.value = slider.value;
-    number.onchange = () => slider.value = number.value;
+    number.onchange = () => {
+      slider.value = number.value;
+      fetch('/set?' + slider.name + '=' + number.value);
+    };
     slider.onchange = () => fetch('/set?' + slider.name + '=' + slider.value);
-    number.onchange = () => fetch('/set?' + slider.name + '=' + number.value);
   }
 
   ['tilt','zoom','focus'].forEach(id => {
@@ -104,20 +105,20 @@ Connection: close
 </script>
 </body>
 </html>""" % (
-        generate_slider_html("Tilt", "tilt") +
-        generate_slider_html("Zoom", "zoom") +
-        generate_slider_html("Focus", "focus")
+        generate_slider_html("Tilt", "tilt", 900, 2100) +
+        generate_slider_html("Zoom", "zoom", 935, 1850) +
+        generate_slider_html("Focus", "focus", 870, 2130)
     )
     uart.write(html.encode())
     time.sleep(0.2)
     uart.read()
 
-def generate_slider_html(title, name):
+def generate_slider_html(title, name, minval, maxval):
     val = pwm_values[name]
     return f"""<div class='slider-container'>
   <label for='{name}'>{title}:</label><br>
-  <input type='range' min='1000' max='2000' step='1' value='{val}' name='{name}' id='{name}'>
-  <input type='number' id='{name}-val' value='{val}' min='1000' max='2000'> µs
+  <input type='range' min='{minval}' max='{maxval}' step='1' value='{val}' name='{name}' id='{name}'>
+  <input type='number' id='{name}-val' value='{val}' min='{minval}' max='{maxval}'> us
 </div>"""
 
 print("Web server active at http://192.168.2.42")
@@ -140,7 +141,7 @@ while True:
                     query = request.split("GET /set?")[1].split(" ")[0]
                     param, val = query.split("=")
                     val = int(val)
-                    if param in pwm_values and 1000 <= val <= 2000:
+                    if param in pwm_values:
                         pwm_values[param] = val
                         set_pwm_us(servo_pins[param], val)
                         save_pwm_values()
@@ -152,4 +153,3 @@ while True:
                 send_response_html()
 
             buffer = b""  # reset buffer after handling a full request
-
