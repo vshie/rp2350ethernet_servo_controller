@@ -53,18 +53,7 @@ def set_pwm_us(pwm, us):
     duty_u16 = int(us * 65535 / 20000)
     pwm.duty_u16(duty_u16)
 
-def interpolate(zoom, points):
-    if zoom <= points[0][0]:
-        return points[0][1]
-    if zoom >= points[-1][0]:
-        return points[-1][1]
-    for i in range(len(points) - 1):
-        x1, y1 = points[i]
-        x2, y2 = points[i + 1]
-        if x1 <= zoom <= x2:
-            return int(y1 + (zoom - x1) * (y2 - y1) / (x2 - x1))
-    return points[-1][1]
-
+# Lookup tables for closest and furthest focus points (from radcamv2.lua)
 closest_points = [
     (900,  882),
     (1100, 1253),
@@ -85,9 +74,25 @@ furthest_points = [
     (2100, 1930)
 ]
 
+def interpolate(zoom, points):
+    # Handle edge cases
+    if zoom <= points[0][0]:
+        return points[0][1]
+    if zoom >= points[-1][0]:
+        return points[-1][1]
+    
+    # Find the bracketing points
+    for i in range(len(points) - 1):
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        if x1 <= zoom <= x2:
+            return int(y1 + (zoom - x1) * (y2 - y1) / (x2 - x1))
+    
+    return points[-1][1]  # fallback
+
 def calculate_autofocus(zoom, focus):
-    margin_gain = 1.05
-    focus_delta = 0.5 + margin_gain * (focus - 1500) / 400.0
+    margin_gain = 1.05  # Same as MARGIN_GAIN in radcamv2.lua
+    focus_delta = 0.5 + margin_gain * (focus - 1500) / 400.0  # Same focus_delta calculation
     closest = interpolate(zoom, closest_points)
     furthest = interpolate(zoom, furthest_points)
     return int(closest + focus_delta * (furthest - closest))
@@ -125,9 +130,9 @@ def generate_slider_html(title, name, minval, maxval):
 
 def send_response_html():
     sliders = (
-        generate_slider_html("Tilt", "tilt", 900, 2100) +
+        generate_slider_html("Focus", "focus", 870, 2130) +
         generate_slider_html("Zoom", "zoom", 935, 1850) +
-        generate_slider_html("Focus", "focus", 870, 2130)
+        generate_slider_html("Tilt", "tilt", 900, 2100)
     )
     
     html = """HTTP/1.1 200 OK
@@ -166,18 +171,56 @@ Connection: close
     <iframe id="contentFrame" src="http://192.168.2.10" allow="fullscreen" allowfullscreen sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"></iframe>
   </div>
 <script>
+  function updateFocusDisplay(newFocus) {
+    var focusSlider = document.getElementById('focus');
+    var focusNumber = document.getElementById('focus-val');
+    focusSlider.value = newFocus;
+    focusNumber.value = newFocus;
+  }
+
   function link(slider, number) {
-    slider.oninput = function() { number.value = slider.value; };
-    number.oninput = function() { slider.value = number.value; };
-    slider.onchange = function() { fetch('/set?' + slider.name + '=' + slider.value); };
-    number.addEventListener('keyup', function(e) {
-      if (e.key === 'Enter') {
-        slider.value = number.value;
+    slider.oninput = function() { 
+      number.value = slider.value;
+      if (slider.name === 'zoom') {
+        // Get current focus value
+        var focusSlider = document.getElementById('focus');
+        var focusValue = focusSlider.value;
+        // Send request to update focus based on new zoom
+        fetch('/set?zoom=' + slider.value + '&focus=' + focusValue)
+          .then(response => response.text())
+          .then(data => {
+            // Parse the response to get the new focus value
+            var newFocus = parseInt(data);
+            if (!isNaN(newFocus)) {
+              updateFocusDisplay(newFocus);
+            }
+          });
+      } else {
+        fetch('/set?' + slider.name + '=' + slider.value);
+      }
+    };
+    number.oninput = function() { 
+      slider.value = number.value;
+      if (slider.name === 'zoom') {
+        // Get current focus value
+        var focusSlider = document.getElementById('focus');
+        var focusValue = focusSlider.value;
+        // Send request to update focus based on new zoom
+        fetch('/set?zoom=' + number.value + '&focus=' + focusValue)
+          .then(response => response.text())
+          .then(data => {
+            // Parse the response to get the new focus value
+            var newFocus = parseInt(data);
+            if (!isNaN(newFocus)) {
+              updateFocusDisplay(newFocus);
+            }
+          });
+      } else {
         fetch('/set?' + slider.name + '=' + number.value);
       }
-    });
+    };
   }
-  ['tilt','zoom','focus'].forEach(function(id) {
+  ['focus','zoom','tilt'].forEach(function(id) {
     var slider = document.getElementById(id);
     var number = document.getElementById(id + '-val');
     link(slider, number);
@@ -249,20 +292,49 @@ while True:
             if "GET /set?" in request:
                 try:
                     query = request.split("GET /set?")[1].split(" ")[0]
-                    param, val = query.split("=")
-                    val = int(val)
-                    if param in pwm_values:
-                        pwm_values[param] = val
-                        set_pwm_us(servo_pins[param], val)
-                        if param == "zoom":
-                            focus_val = calculate_autofocus(val, pwm_values["focus"])
-                            pwm_values["focus"] = focus_val
-                            set_pwm_us(servo_pins["focus"], focus_val)
-                        save_pwm_values()
-                        print(f"Updated {param} to {val} us")
+                    # Handle both single parameter and zoom+focus combination
+                    if '&' in query:
+                        # Handle zoom+focus combination
+                        params = query.split('&')
+                        zoom_param = params[0].split('=')
+                        focus_param = params[1].split('=')
+                        if zoom_param[0] == 'zoom' and focus_param[0] == 'focus':
+                            zoom_val = int(zoom_param[1])
+                            focus_val = int(focus_param[1])
+                            pwm_values['zoom'] = zoom_val
+                            set_pwm_us(servo_pins['zoom'], zoom_val)
+                            # Calculate and set new focus value
+                            new_focus = calculate_autofocus(zoom_val, focus_val)
+                            pwm_values['focus'] = new_focus
+                            set_pwm_us(servo_pins['focus'], new_focus)
+                            save_pwm_values()
+                            print(f"Updated zoom to {zoom_val} us and focus to {new_focus} us")
+                            # Return the new focus value in the response
+                            response = str(new_focus)
+                            send_response = (
+                                "HTTP/1.1 200 OK\r\n"
+                                "Content-Type: text/plain\r\n"
+                                "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                                "Content-Length: %d\r\n"
+                                "Connection: close\r\n"
+                                "\r\n%s" % (len(response), response)
+                            )
+                            uart.write(send_response.encode())
+                            time.sleep(0.1)
+                            uart.read()
+                    else:
+                        # Handle single parameter
+                        param, val = query.split("=")
+                        val = int(val)
+                        if param in pwm_values:
+                            pwm_values[param] = val
+                            set_pwm_us(servo_pins[param], val)
+                            save_pwm_values()
+                            print(f"Updated {param} to {val} us")
+                            send_response_ok()
                 except:
                     pass
-                send_response_ok()
+                    send_response_ok()
             elif "GET / " in request:
                 send_response_html()
 
