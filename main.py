@@ -53,6 +53,45 @@ def set_pwm_us(pwm, us):
     duty_u16 = int(us * 65535 / 20000)
     pwm.duty_u16(duty_u16)
 
+def interpolate(zoom, points):
+    if zoom <= points[0][0]:
+        return points[0][1]
+    if zoom >= points[-1][0]:
+        return points[-1][1]
+    for i in range(len(points) - 1):
+        x1, y1 = points[i]
+        x2, y2 = points[i + 1]
+        if x1 <= zoom <= x2:
+            return int(y1 + (zoom - x1) * (y2 - y1) / (x2 - x1))
+    return points[-1][1]
+
+closest_points = [
+    (900,  882),
+    (1100, 1253),
+    (1300, 1498),
+    (1500, 1669),
+    (1700, 1759),
+    (1900, 1862),
+    (2100, 1883)
+]
+
+furthest_points = [
+    (900,  935),
+    (1100, 1305),
+    (1300, 1520),
+    (1500, 1696),
+    (1700, 1811),
+    (1900, 1911),
+    (2100, 1930)
+]
+
+def calculate_autofocus(zoom, focus):
+    margin_gain = 1.05
+    focus_delta = 0.5 + margin_gain * (focus - 1500) / 400.0
+    closest = interpolate(zoom, closest_points)
+    furthest = interpolate(zoom, furthest_points)
+    return int(closest + focus_delta * (furthest - closest))
+
 for name, val in pwm_values.items():
     set_pwm_us(servo_pins[name], val)
 
@@ -70,56 +109,127 @@ def send_response_ok():
     time.sleep(0.1)
     uart.read()
 
+def generate_slider_html(title, name, minval, maxval):
+    val = pwm_values[name]
+    left_label = {"tilt": "Down", "zoom": "Out", "focus": "Closer"}[name]
+    right_label = {"tilt": "Up", "zoom": "In", "focus": "Farther"}[name]
+    return """<div>
+  <label>""" + title + """:</label>
+  <div>
+    <span style="font-style: italic">""" + left_label + """</span>
+    <input type='range' min='""" + str(minval) + """' max='""" + str(maxval) + """' step='1' value='""" + str(val) + """' name='""" + name + """' id='""" + name + """'>
+    <span style="font-style: italic">""" + right_label + """</span>
+  </div>
+  <input type='number' id='""" + name + """-val' value='""" + str(val) + """' min='""" + str(minval) + """' max='""" + str(maxval) + """'> µs
+</div>"""
+
 def send_response_html():
+    sliders = (
+        generate_slider_html("Tilt", "tilt", 900, 2100) +
+        generate_slider_html("Zoom", "zoom", 935, 1850) +
+        generate_slider_html("Focus", "focus", 870, 2130)
+    )
+    
     html = """HTTP/1.1 200 OK
-Content-Type: text/html
+Content-Type: text/html; charset=UTF-8
 Cache-Control: no-cache, no-store, must-revalidate
 Connection: close
 
 <!DOCTYPE html>
 <html>
-<head><meta charset='UTF-8'>
+<head>
+  <meta charset="UTF-8">
   <title>RadCam RP2350-ETH Controller</title>
   <style>
-    .slider-container { margin-bottom: 20px; }
+    body { margin: 20px; }
+    h1 { text-align: center; }
+    label { font-weight: bold; display: block; text-align: center; }
+    input[type='number'] { text-align: center; width: 100px; }
+    div { text-align: center; }
+    input[type='range'] { width: 80%; }
+    .iframe-container { margin-top: 30px; }
+    .url-input { width: 60%; padding: 8px; margin-right: 10px; }
+    .refresh-btn { padding: 8px 20px; }
+    iframe { width: 100%; height: 1000px; border: 1px solid #ccc; margin-top: 10px; }
+    .error-message { color: red; margin-top: 10px; display: none; }
+    .loading { display: none; margin-top: 10px; }
   </style>
 </head>
 <body>
   <h1>RadCam RP2350-ETH Controller</h1>
-  %s
+""" + sliders + """
+  <div class="iframe-container">
+    <input type="text" id="urlInput" class="url-input" placeholder="Enter URL or IP address" value="192.168.2.10">
+    <button onclick="loadIframe()" class="refresh-btn">Load/Refresh</button>
+    <div id="loading" class="loading">Loading...</div>
+    <div id="errorMessage" class="error-message"></div>
+    <iframe id="contentFrame" src="http://192.168.2.10" allow="fullscreen" allowfullscreen sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"></iframe>
+  </div>
 <script>
   function link(slider, number) {
-    slider.oninput = () => number.value = slider.value;
-    number.onchange = () => {
-      slider.value = number.value;
-      fetch('/set?' + slider.name + '=' + number.value);
-    };
-    slider.onchange = () => fetch('/set?' + slider.name + '=' + slider.value);
+    slider.oninput = function() { number.value = slider.value; };
+    number.oninput = function() { slider.value = number.value; };
+    slider.onchange = function() { fetch('/set?' + slider.name + '=' + slider.value); };
+    number.addEventListener('keyup', function(e) {
+      if (e.key === 'Enter') {
+        slider.value = number.value;
+        fetch('/set?' + slider.name + '=' + number.value);
+      }
+    });
   }
-
-  ['tilt','zoom','focus'].forEach(id => {
-    const slider = document.getElementById(id);
-    const number = document.getElementById(id + '-val');
+  ['tilt','zoom','focus'].forEach(function(id) {
+    var slider = document.getElementById(id);
+    var number = document.getElementById(id + '-val');
     link(slider, number);
   });
+
+  function showError(message) {
+    var errorDiv = document.getElementById('errorMessage');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+    document.getElementById('loading').style.display = 'none';
+  }
+
+  function loadIframe() {
+    var url = document.getElementById('urlInput').value;
+    var errorDiv = document.getElementById('errorMessage');
+    var loadingDiv = document.getElementById('loading');
+    var iframe = document.getElementById('contentFrame');
+    
+    errorDiv.style.display = 'none';
+    loadingDiv.style.display = 'block';
+    
+    if (url) {
+      // Add http:// if no protocol is specified
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      
+      iframe.src = url;
+      loadingDiv.style.display = 'none';
+    } else {
+      showError('Please enter a URL');
+      loadingDiv.style.display = 'none';
+    }
+  }
+
+  // Allow Enter key to trigger iframe load
+  document.getElementById('urlInput').addEventListener('keyup', function(e) {
+    if (e.key === 'Enter') {
+      loadIframe();
+    }
+  });
+
+  // Load the default URL when the page loads
+  window.onload = function() {
+    loadIframe();
+  };
 </script>
 </body>
-</html>""" % (
-        generate_slider_html("Tilt", "tilt", 900, 2100) +
-        generate_slider_html("Zoom", "zoom", 935, 1850) +
-        generate_slider_html("Focus", "focus", 870, 2130)
-    )
+</html>"""
     uart.write(html.encode())
     time.sleep(0.2)
     uart.read()
-
-def generate_slider_html(title, name, minval, maxval):
-    val = pwm_values[name]
-    return f"""<div class='slider-container'>
-  <label for='{name}'>{title}:</label><br>
-  <input type='range' min='{minval}' max='{maxval}' step='1' value='{val}' name='{name}' id='{name}'>
-  <input type='number' id='{name}-val' value='{val}' min='{minval}' max='{maxval}'> us
-</div>"""
 
 print("Web server active at http://192.168.2.42")
 
@@ -144,6 +254,10 @@ while True:
                     if param in pwm_values:
                         pwm_values[param] = val
                         set_pwm_us(servo_pins[param], val)
+                        if param == "zoom":
+                            focus_val = calculate_autofocus(val, pwm_values["focus"])
+                            pwm_values["focus"] = focus_val
+                            set_pwm_us(servo_pins["focus"], focus_val)
                         save_pwm_values()
                         print(f"Updated {param} to {val} us")
                 except:
@@ -152,4 +266,4 @@ while True:
             elif "GET / " in request:
                 send_response_html()
 
-            buffer = b""  # reset buffer after handling a full request
+            buffer = b""
