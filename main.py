@@ -171,6 +171,9 @@ Connection: close
     <iframe id="contentFrame" src="http://192.168.2.10" allow="fullscreen" allowfullscreen sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-top-navigation"></iframe>
   </div>
 <script>
+  // Store the last manually set focus value
+  var lastManualFocus = """ + str(pwm_values['focus']) + """;
+
   function updateFocusDisplay(newFocus) {
     var focusSlider = document.getElementById('focus');
     var focusNumber = document.getElementById('focus-val');
@@ -182,11 +185,8 @@ Connection: close
     slider.oninput = function() { 
       number.value = slider.value;
       if (slider.name === 'zoom') {
-        // Get current focus value
-        var focusSlider = document.getElementById('focus');
-        var focusValue = focusSlider.value;
-        // Send request to update focus based on new zoom
-        fetch('/set?zoom=' + slider.value + '&focus=' + focusValue)
+        // Use the last manually set focus value for calculations
+        fetch('/set?zoom=' + slider.value + '&focus=' + lastManualFocus)
           .then(response => response.text())
           .then(data => {
             // Parse the response to get the new focus value
@@ -195,6 +195,10 @@ Connection: close
               updateFocusDisplay(newFocus);
             }
           });
+      } else if (slider.name === 'focus') {
+        // Update the last manually set focus value
+        lastManualFocus = slider.value;
+        fetch('/set?focus=' + slider.value);
       } else {
         fetch('/set?' + slider.name + '=' + slider.value);
       }
@@ -202,11 +206,8 @@ Connection: close
     number.oninput = function() { 
       slider.value = number.value;
       if (slider.name === 'zoom') {
-        // Get current focus value
-        var focusSlider = document.getElementById('focus');
-        var focusValue = focusSlider.value;
-        // Send request to update focus based on new zoom
-        fetch('/set?zoom=' + number.value + '&focus=' + focusValue)
+        // Use the last manually set focus value for calculations
+        fetch('/set?zoom=' + number.value + '&focus=' + lastManualFocus)
           .then(response => response.text())
           .then(data => {
             // Parse the response to get the new focus value
@@ -215,6 +216,10 @@ Connection: close
               updateFocusDisplay(newFocus);
             }
           });
+      } else if (slider.name === 'focus') {
+        // Update the last manually set focus value
+        lastManualFocus = number.value;
+        fetch('/set?focus=' + number.value);
       } else {
         fetch('/set?' + slider.name + '=' + number.value);
       }
