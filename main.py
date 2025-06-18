@@ -118,14 +118,21 @@ def generate_slider_html(title, name, minval, maxval):
     val = pwm_values[name]
     left_label = {"tilt": "Down", "zoom": "Out", "focus": "Closer"}[name]
     right_label = {"tilt": "Up", "zoom": "In", "focus": "Farther"}[name]
+    
+    # For tilt, reverse the values so Down (left) = high PWM, Up (right) = low PWM
+    if name == "tilt":
+        display_val = maxval + minval - val  # Reverse the display value
+    else:
+        display_val = val
+        
     return """<div>
   <label>""" + title + """:</label>
   <div>
     <span style="font-style: italic">""" + left_label + """</span>
-    <input type='range' min='""" + str(minval) + """' max='""" + str(maxval) + """' step='1' value='""" + str(val) + """' name='""" + name + """' id='""" + name + """'>
+    <input type='range' min='""" + str(minval) + """' max='""" + str(maxval) + """' step='1' value='""" + str(display_val) + """' name='""" + name + """' id='""" + name + """'>
     <span style="font-style: italic">""" + right_label + """</span>
   </div>
-  <input type='number' id='""" + name + """-val' value='""" + str(val) + """' min='""" + str(minval) + """' max='""" + str(maxval) + """'> µs
+  <input type='number' id='""" + name + """-val' value='""" + str(display_val) + """' min='""" + str(minval) + """' max='""" + str(maxval) + """'> µs
 </div>"""
 
 def send_response_html():
@@ -199,6 +206,10 @@ Connection: close
         // Update the last manually set focus value
         lastManualFocus = slider.value;
         fetch('/set?focus=' + slider.value);
+      } else if (slider.name === 'tilt') {
+        // Convert display value back to actual PWM value for tilt
+        var actualPWM = 2100 + 900 - parseInt(slider.value);
+        fetch('/set?tilt=' + actualPWM);
       } else {
         fetch('/set?' + slider.name + '=' + slider.value);
       }
@@ -220,6 +231,10 @@ Connection: close
         // Update the last manually set focus value
         lastManualFocus = number.value;
         fetch('/set?focus=' + number.value);
+      } else if (slider.name === 'tilt') {
+        // Convert display value back to actual PWM value for tilt
+        var actualPWM = 2100 + 900 - parseInt(number.value);
+        fetch('/set?tilt=' + actualPWM);
       } else {
         fetch('/set?' + slider.name + '=' + number.value);
       }
