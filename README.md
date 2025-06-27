@@ -56,7 +56,11 @@ The web interface provides sliders for each servo with the following features:
   - Parameters:
     - `servo`: tilt, zoom, or focus
     - `value`: position in microseconds (1000-2000)
-
+## First hardware usage - Setup
+1. Connect USB-C cable from computer to module
+2. Push and hold boot and reset buttons, then release reset, then release boot. A file volume will appear on your OS.
+3. Drag and drop rp2-pico-20230209-unstable-v1.19.1.uf2 to the drive that shows up. The board will restart and the file volume disconnect.
+4. Install mpremote: pip install mpremote
 ## Setup
 Make sure to setup device with rp2-pico-20230209-unstable-v1.19.1.uf2
 1. Flash the RP2350 with the provided firmware: mpremote cp main.py :main.py and mpremote cp ch9120.py :ch9120.py
