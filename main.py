@@ -30,7 +30,8 @@ print("end")
 servo_pins = {
     "tilt": PWM(Pin(2)),
     "zoom": PWM(Pin(3)),
-    "focus": PWM(Pin(4))
+    "focus": PWM(Pin(4)),
+    "yaw": PWM(Pin(5))
 }
 
 for pwm in servo_pins.values():
@@ -45,7 +46,7 @@ def load_pwm_values():
     if "pwm_values.txt" in os.listdir():
         with open("pwm_values.txt", "r") as f:
             return json.load(f)
-    return {"tilt": 1500, "zoom": 1500, "focus": 1500}
+    return {"tilt": 1500, "zoom": 1500, "focus": 1500, "yaw": 1500}
 
 pwm_values = load_pwm_values()
 
@@ -116,8 +117,8 @@ def send_response_ok():
 
 def generate_slider_html(title, name, minval, maxval):
     val = pwm_values[name]
-    left_label = {"tilt": "Down", "zoom": "Out", "focus": "Closer"}[name]
-    right_label = {"tilt": "Up", "zoom": "In", "focus": "Farther"}[name]
+    left_label = {"tilt": "Down", "zoom": "Out", "focus": "Closer", "yaw": "Left"}[name]
+    right_label = {"tilt": "Up", "zoom": "In", "focus": "Farther", "yaw": "Right"}[name]
     
     # For tilt, reverse the values so Down (left) = high PWM, Up (right) = low PWM
     if name == "tilt":
@@ -139,7 +140,8 @@ def send_response_html():
     sliders = (
         generate_slider_html("Focus", "focus", 870, 2130) +
         generate_slider_html("Zoom", "zoom", 935, 1850) +
-        generate_slider_html("Tilt", "tilt", 900, 2100)
+        generate_slider_html("Tilt", "tilt", 900, 2100) +
+        generate_slider_html("Yaw", "yaw", 900, 2100)
     )
     
     html = """HTTP/1.1 200 OK
@@ -240,7 +242,7 @@ Connection: close
       }
     };
   }
-  ['focus','zoom','tilt'].forEach(function(id) {
+  ['focus','zoom','tilt','yaw'].forEach(function(id) {
     var slider = document.getElementById(id);
     var number = document.getElementById(id + '-val');
     link(slider, number);

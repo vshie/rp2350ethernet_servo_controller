@@ -32,6 +32,7 @@ This project implements a web server on the RP2350 microcontroller that allows r
 - Tilt Servo: GPIO2
 - Zoom Servo: GPIO3
 - Focus Servo: GPIO4
+-- Yaw Servo (external): GPIO5 
 
 ## Features
 
