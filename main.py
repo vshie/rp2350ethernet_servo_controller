@@ -3,6 +3,32 @@ import time
 import ujson as json
 import os
 
+# Slew rate limiting configuration
+# Time to move from min to max PWM value (in seconds)
+SLEW_RATE_TIMES = {
+    "tilt": 2.0,    # 2 seconds for tilt
+    "zoom": 2.0,    # 2 seconds for zoom  
+    "focus": 2.0,   # 2 seconds for focus
+    "yaw": 5.0      # 5 seconds for yaw
+}
+
+# PWM ranges for each servo
+PWM_RANGES = {
+    "tilt": (900, 2100),
+    "zoom": (935, 1850),
+    "focus": (870, 2130),
+    "yaw": (900, 2100)
+}
+
+# Current target values (what the user wants)
+target_values = {}
+
+# Current actual values (what's being output)
+actual_values = {}
+
+# Last update time for each servo
+last_update_times = {}
+
 # Setup UART
 uart = UART(1, baudrate=115200, tx=Pin(20), rx=Pin(21))
 
@@ -40,7 +66,7 @@ for pwm in servo_pins.values():
 # Persistent storage
 def save_pwm_values():
     with open("pwm_values.txt", "w") as f:
-        json.dump(pwm_values, f)
+        json.dump(target_values, f)
 
 def load_pwm_values():
     if "pwm_values.txt" in os.listdir():
@@ -50,9 +76,56 @@ def load_pwm_values():
 
 pwm_values = load_pwm_values()
 
+# Initialize target and actual values
+for name, val in pwm_values.items():
+    target_values[name] = val
+    actual_values[name] = val
+    last_update_times[name] = time.time()
+
+# Set initial servo positions
+for name, val in actual_values.items():
+    set_pwm_us(servo_pins[name], val)
+
 def set_pwm_us(pwm, us):
     duty_u16 = int(us * 65535 / 20000)
     pwm.duty_u16(duty_u16)
+
+def calculate_slew_rate_step(servo_name):
+    """Calculate the maximum step size for smooth movement"""
+    min_val, max_val = PWM_RANGES[servo_name]
+    total_range = max_val - min_val
+    time_to_traverse = SLEW_RATE_TIMES[servo_name]
+    # Assume we want to update at ~50Hz for smooth movement
+    updates_per_second = 50
+    total_updates = time_to_traverse * updates_per_second
+    return max(1, int(total_range / total_updates))
+
+def update_servo_positions():
+    """Update actual servo positions based on slew rate limits"""
+    current_time = time.time()
+    
+    for servo_name in servo_pins.keys():
+        if target_values[servo_name] != actual_values[servo_name]:
+            # Calculate maximum step size for this servo
+            max_step = calculate_slew_rate_step(servo_name)
+            
+            # Calculate time since last update
+            time_since_update = current_time - last_update_times[servo_name]
+            # Update at 50Hz
+            if time_since_update >= 0.02:  # 20ms = 50Hz
+                current_val = actual_values[servo_name]
+                target_val = target_values[servo_name]
+                
+                # Move towards target
+                if current_val < target_val:
+                    new_val = min(current_val + max_step, target_val)
+                else:
+                    new_val = max(current_val - max_step, target_val)
+                
+                # Update actual value and output
+                actual_values[servo_name] = new_val
+                set_pwm_us(servo_pins[servo_name], new_val)
+                last_update_times[servo_name] = current_time
 
 # Lookup tables for closest and furthest focus points (from radcamv2.lua)
 closest_points = [
@@ -116,7 +189,7 @@ def send_response_ok():
     uart.read()
 
 def generate_slider_html(title, name, minval, maxval):
-    val = pwm_values[name]
+    val = target_values[name]  # Use target value for display
     left_label = {"tilt": "Down", "zoom": "Out", "focus": "Closer", "yaw": "Left"}[name]
     right_label = {"tilt": "Up", "zoom": "In", "focus": "Farther", "yaw": "Right"}[name]
     
@@ -181,7 +254,7 @@ Connection: close
   </div>
 <script>
   // Store the last manually set focus value
-  var lastManualFocus = """ + str(pwm_values['focus']) + """;
+  var lastManualFocus = """ + str(target_values['focus']) + """;
 
   function updateFocusDisplay(newFocus) {
     var focusSlider = document.getElementById('focus');
@@ -300,6 +373,9 @@ print("Web server active at http://192.168.2.42")
 
 buffer = b""
 while True:
+    # Update servo positions based on slew rate limits
+    update_servo_positions()
+    
     if uart.any():
         buffer += uart.read(uart.any())
         if b"\r\n\r\n" in buffer:
@@ -323,14 +399,14 @@ while True:
                         if zoom_param[0] == 'zoom' and focus_param[0] == 'focus':
                             zoom_val = int(zoom_param[1])
                             focus_val = int(focus_param[1])
-                            pwm_values['zoom'] = zoom_val
-                            set_pwm_us(servo_pins['zoom'], zoom_val)
+                            target_values['zoom'] = zoom_val  # Set target instead of actual
                             # Calculate and set new focus value
                             new_focus = calculate_autofocus(zoom_val, focus_val)
-                            pwm_values['focus'] = new_focus
-                            set_pwm_us(servo_pins['focus'], new_focus)
+                            target_values['focus'] = new_focus  # Set target instead of actual
+                            # Save target values to persistent storage
+                            pwm_values = target_values.copy()
                             save_pwm_values()
-                            print(f"Updated zoom to {zoom_val} us and focus to {new_focus} us")
+                            print(f"Updated zoom target to {zoom_val} us and focus target to {new_focus} us")
                             # Return the new focus value in the response
                             response = str(new_focus)
                             send_response = (
@@ -348,11 +424,12 @@ while True:
                         # Handle single parameter
                         param, val = query.split("=")
                         val = int(val)
-                        if param in pwm_values:
-                            pwm_values[param] = val
-                            set_pwm_us(servo_pins[param], val)
+                        if param in target_values:
+                            target_values[param] = val  # Set target instead of actual
+                            # Save target values to persistent storage
+                            pwm_values = target_values.copy()
                             save_pwm_values()
-                            print(f"Updated {param} to {val} us")
+                            print(f"Updated {param} target to {val} us")
                             send_response_ok()
                 except:
                     pass
