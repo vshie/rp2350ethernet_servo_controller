@@ -82,13 +82,13 @@ for name, val in pwm_values.items():
     actual_values[name] = val
     last_update_times[name] = time.time()
 
-# Set initial servo positions
-for name, val in actual_values.items():
-    set_pwm_us(servo_pins[name], val)
-
 def set_pwm_us(pwm, us):
     duty_u16 = int(us * 65535 / 20000)
     pwm.duty_u16(duty_u16)
+
+# Set initial servo positions
+for name, val in actual_values.items():
+    set_pwm_us(servo_pins[name], val)
 
 def calculate_slew_rate_step(servo_name):
     """Calculate the maximum step size for smooth movement"""
