@@ -6,10 +6,10 @@ import os
 # Slew rate limiting configuration
 # Time to move from min to max PWM value (in seconds)
 SLEW_RATE_TIMES = {
-    "tilt": 2.0,    # 2 seconds for tilt
-    "zoom": 2.0,    # 2 seconds for zoom  
-    "focus": 2.0,   # 2 seconds for focus
-    "yaw": 5.0      # 5 seconds for yaw
+    "tilt": 0.22,   # ~0.22 seconds for tilt (9x faster than original)
+    "zoom": 0.5,    # 2 seconds for zoom  
+    "focus": 0.0,   # 0 seconds for focus (instant response for autofocus)
+    "yaw": 1.2     # ~0.56 seconds for yaw (9x faster than original)
 }
 
 # PWM ranges for each servo
@@ -95,6 +95,11 @@ def calculate_slew_rate_step(servo_name):
     min_val, max_val = PWM_RANGES[servo_name]
     total_range = max_val - min_val
     time_to_traverse = SLEW_RATE_TIMES[servo_name]
+    
+    # If time_to_traverse is 0, return the full range for instant movement
+    if time_to_traverse <= 0:
+        return total_range
+    
     # Assume we want to update at ~50Hz for smooth movement
     updates_per_second = 50
     total_updates = time_to_traverse * updates_per_second
@@ -217,12 +222,7 @@ def send_response_html():
         generate_slider_html("Yaw", "yaw", 900, 2100)
     )
     
-    html = """HTTP/1.1 200 OK
-Content-Type: text/html; charset=UTF-8
-Cache-Control: no-cache, no-store, must-revalidate
-Connection: close
-
-<!DOCTYPE html>
+    body = """<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -365,8 +365,18 @@ Connection: close
 </script>
 </body>
 </html>"""
+
+    html = """HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+Pragma: no-cache
+Expires: 0
+Connection: close
+Content-Length: """ + str(len(body.encode())) + """
+
+""" + body
     uart.write(html.encode())
-    time.sleep(0.2)
+    time.sleep(0.3)  # Give more time for the response to be sent
     uart.read()
 
 print("Web server active at http://192.168.2.42")
@@ -385,7 +395,7 @@ while True:
             except:
                 buffer = b""
                 continue
-            print("Request received:", request)
+            print("Request received:", request[:100])  # Only print first 100 chars to avoid spam
 
             if "GET /set?" in request:
                 try:
@@ -404,7 +414,6 @@ while True:
                             new_focus = calculate_autofocus(zoom_val, focus_val)
                             target_values['focus'] = new_focus  # Set target instead of actual
                             # Save target values to persistent storage
-                            pwm_values = target_values.copy()
                             save_pwm_values()
                             print(f"Updated zoom target to {zoom_val} us and focus target to {new_focus} us")
                             # Return the new focus value in the response
@@ -427,14 +436,26 @@ while True:
                         if param in target_values:
                             target_values[param] = val  # Set target instead of actual
                             # Save target values to persistent storage
-                            pwm_values = target_values.copy()
                             save_pwm_values()
                             print(f"Updated {param} target to {val} us")
                             send_response_ok()
                 except:
                     pass
                     send_response_ok()
-            elif "GET / " in request:
+            elif "GET /favicon.ico" in request:
+                # Send a simple 404 for favicon requests
+                response = "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n"
+                uart.write(response.encode())
+                time.sleep(0.1)
+                uart.read()
+            elif any(pattern in request for pattern in ["GET / ", "GET / HTTP", "GET /", "GET /index.html"]):
                 send_response_html()
+            else:
+                print("Unhandled request pattern:", request[:50])
+                # Send a 404 for unhandled requests
+                response = "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n"
+                uart.write(response.encode())
+                time.sleep(0.1)
+                uart.read()
 
             buffer = b""
