@@ -63,7 +63,7 @@ The web interface provides sliders for each servo with the following features:
 3. Drag and drop rp2-pico-20230209-unstable-v1.19.1.uf2 to the drive that shows up. The board will restart and the file volume disconnect.
 4. Install mpremote: pip install mpremote
 ## Setup
-Make sure to setup device with rp2-pico-20230209-unstable-v1.19.1.uf2
+Make sure to setup device with RPI_PICO-20250415-v1.25.0
 1. Flash the RP2350 with the provided firmware: mpremote cp main.py :main.py and mpremote cp ch9120.py :ch9120.py
 2. Connect the servos according to the pin connections
 3. Power on the system - if debugging, run main.py with mpremote run main.py (otherwise main.py runs on boot)
